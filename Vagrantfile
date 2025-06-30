@@ -1,23 +1,9 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-# Função para gerar chave SSH (sempre cria uma nova)
-def ensure_ssh_key
-  ssh_key_path = File.expand_path("~/.ssh/id_rsa")
-  ssh_pub_key_path = "#{ssh_key_path}.pub"
-
-  # Remove chaves existentes se existirem
-  File.delete(ssh_key_path) if File.exist?(ssh_key_path)
-  File.delete(ssh_pub_key_path) if File.exist?(ssh_pub_key_path)
-
-  # Gera nova chave SSH
-  puts "Gerando nova chave SSH..."
-  system("ssh-keygen -t rsa -b 4096 -f #{ssh_key_path} -N '' -C 'vagrant@wiliam.devops'")
-  puts "Nova chave SSH gerada em #{ssh_key_path}"
-
-  # Retorna o conteúdo da chave pública
-  File.read(ssh_pub_key_path).strip
-end
+# Caminho e leitura da chave pública SSH
+ssh_pub_key_path = File.expand_path("~/.ssh/id_rsa.pub")
+ssh_public_key = File.read(ssh_pub_key_path).strip
 
 # Função para configurar Ansible provisioner
 def configure_ansible(ansible, playbook, limit)
@@ -27,14 +13,12 @@ def configure_ansible(ansible, playbook, limit)
   ansible.compatibility_mode = "2.0"
 end
 
-# Gerar/verificar chave SSH antes de configurar as VMs
-ssh_public_key = ensure_ssh_key
-
 Vagrant.configure("2") do |config|
   config.vm.provider "virtualbox" do |vb|
     vb.linked_clone = true
   end
 
+  # Provisionamento shell comum
   config.vm.provision "shell", inline: <<-SHELL
     sleep 10
     apt-get update -y
@@ -71,7 +55,7 @@ Vagrant.configure("2") do |config|
     echo "Chave SSH configurada para os usuários: wiliam, root e vagrant"
   SHELL
 
-  # Provisionamento comum
+  # Provisionamento comum com Ansible
   config.vm.provision "ansible" do |ansible|
     configure_ansible(ansible, "playbooks/common_provisioning.yml", "all")
   end
