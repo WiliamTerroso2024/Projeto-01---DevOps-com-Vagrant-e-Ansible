@@ -1,0 +1,111 @@
+---
+- name: Common VM Provisioning
+  hosts: all
+  become: true
+  vars:
+    user_name: wiliam
+    matricula: 20212380039
+
+  tasks:
+    - name: Update and upgrade system
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: yes
+
+    - name: Install and configure Chrony (NTP server)
+      ansible.builtin.apt:
+        name: chrony
+        state: present
+      notify: Restart chrony
+
+    - name: Configure Chrony to use pool.ntp.br
+      ansible.builtin.lineinfile:
+        path: /etc/chrony/chrony.conf
+        regexp: '^pool'
+        line: 'pool pool.ntp.br iburst'
+        state: present
+      notify: Restart chrony
+
+    - name: Set timezone to America/Recife
+      community.general.timezone:
+        name: America/Recife
+
+    - name: Create 'ifpb' group
+      ansible.builtin.group:
+        name: ifpb
+        state: present
+
+    - name: Create user {{ user_name }}
+      ansible.builtin.user:
+        name: "{{ user_name }}"
+        state: present
+        groups: ifpb
+        append: yes
+        shell: /bin/bash
+
+    - name: Allow 'ifpb' group to use sudo without password
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        state: present
+        regexp: '^%ifpb ALL='
+        line: '%ifpb ALL=(ALL) NOPASSWD: ALL'
+        validate: '/usr/sbin/visudo -cf %s'
+
+    - name: Ensure .ssh directory exists for {{ user_name }}
+      ansible.builtin.file:
+        path: "/home/{{ user_name }}/.ssh"
+        state: directory
+        mode: '0700'
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
+
+    
+    # As chaves SSH devem ser gerenciadas externamente ou via Vagrant
+
+    - name: Configure SSH Daemon
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication yes' }  # Mantido yes para funcionar com Vagrant
+        - { regexp: '^#?ChallengeResponseAuthentication', line: 'ChallengeResponseAuthentication no' }
+        - { regexp: '^#?UsePAM', line: 'UsePAM yes' }
+        - { regexp: '^#?AllowGroups', line: 'AllowGroups vagrant ifpb' }
+      notify: Restart sshd
+
+    - name: Set SSH Banner
+      ansible.builtin.copy:
+        content: |
+          Acesso apenas para pessoas com autorizacao expressa.
+          Seu acesso esta sendo monitorado !!!
+        dest: /etc/issue.net
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Configure SSH Daemon to use Banner
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?Banner'
+        line: 'Banner /etc/issue.net'
+        state: present
+      notify: Restart sshd
+
+    - name: Install NFS client
+      ansible.builtin.apt:
+        name: nfs-common
+        state: present
+
+  handlers:
+    - name: Restart chrony
+      ansible.builtin.service:
+        name: chrony
+        state: restarted
+
+    - name: Restart sshd
+      ansible.builtin.service:
+        name: sshd
+        state: restarted

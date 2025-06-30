@@ -1,0 +1,31 @@
+# dhcpd.conf
+#
+# Sample configuration file for ISC dhcpd
+#
+
+# option definitions common to all supported networks...
+option domain-name "{{ nome_aluno }}.devops";
+option domain-name-servers 1.1.1.1, 8.8.8.8;
+
+default-lease-time 600;
+max-lease-time 7200;
+
+ddns-update-style none;
+
+authoritative;
+
+subnet 192.168.56.0 netmask 255.255.255.0 {
+  range 192.168.56.50 192.168.56.100;
+  option routers 192.168.56.1;
+}
+
+# Configuração manual para os endereços dos servidores:
+host db {
+  hardware ethernet {{ db_mac_address }}; # MAC address obtido automaticamente
+  fixed-address {{ db_ip_fixo }};
+}
+
+host app {
+  hardware ethernet {{ app_mac_address }}; # MAC address obtido automaticamente
+  fixed-address {{ app_ip_fixo }};
+}

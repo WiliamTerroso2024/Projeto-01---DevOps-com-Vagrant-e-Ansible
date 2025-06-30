@@ -1,0 +1,86 @@
+---
+- name: Server app Provisioning
+  hosts: app
+  become: true
+  vars:
+    nome_completo_aluno: Wiliam Terroso de Sousa Melo
+    matricula_aluno: 20212380039
+
+  tasks:
+    - name: Install apache2
+      ansible.builtin.apt:
+        name: apache2
+        state: present
+
+    - name: Create custom index.html
+      ansible.builtin.copy:
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Servidor de Aplicação</title>
+              <meta charset="UTF-8">
+          </head>
+          <body>
+              <h1>Servidor de Aplicação - {{ nome_completo_aluno }}</h1>
+              <p>Matrícula: {{ matricula_aluno }}</p>
+              <p>Hostname: {{ ansible_hostname }}</p>
+              <p>Data/Hora: {{ ansible_date_time.iso8601 }}</p>
+          </body>
+          </html>
+        dest: /var/www/html/index.html
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart apache2
+
+    - name: Start and enable Apache2
+      ansible.builtin.service:
+        name: apache2
+        state: started
+        enabled: yes
+
+    - name: Install autofs
+      ansible.builtin.apt:
+        name: autofs
+        state: present
+
+    - name: Configure autofs for NFS mount
+      ansible.builtin.lineinfile:
+        path: /etc/auto.master
+        line: "/var/nfs /etc/auto.nfs --timeout=60"
+        state: present
+        regexp: '^/var/nfs'
+      notify: Restart autofs
+
+    - name: Create auto.nfs file for NFS mount
+      ansible.builtin.copy:
+        content: "nfs -fstype=nfs,rw 192.168.56.139:/dados/nfs"
+        dest: /etc/auto.nfs
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart autofs
+
+    - name: Create /var/nfs directory
+      ansible.builtin.file:
+        path: /var/nfs
+        state: directory
+        mode: '0755'
+
+    - name: Start and enable autofs
+      ansible.builtin.service:
+        name: autofs
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Restart apache2
+      ansible.builtin.service:
+        name: apache2
+        state: restarted
+
+    - name: Restart autofs
+      ansible.builtin.service:
+        name: autofs
+        state: restarted

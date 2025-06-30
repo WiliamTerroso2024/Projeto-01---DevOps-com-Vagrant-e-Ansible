@@ -1,0 +1,231 @@
+---
+- name: Server arq Provisioning
+  hosts: arq
+  become: true
+  vars:
+    nome_aluno: wiliam
+    matricula_aluno: 20212380039
+    db_ip_fixo: 192.168.56.140
+    app_ip_fixo: 192.168.56.141
+
+  tasks:
+    - name: Install DHCP server
+      ansible.builtin.apt:
+        name: isc-dhcp-server
+        state: present
+
+    # Verificar interfaces de rede disponíveis primeiro
+    - name: Get network interfaces
+      ansible.builtin.shell: "ip link show | grep -E '^[0-9]+:' | grep -v lo | awk -F': ' '{print $2}' | head -5"
+      register: network_interfaces
+      changed_when: false
+
+    - name: Show available interfaces
+      ansible.builtin.debug:
+        msg: "Interfaces disponíveis: {{ network_interfaces.stdout_lines }}"
+
+    # Verificar qual interface está ativa na rede 192.168.56.x
+    - name: Check which interface has 192.168.56.x IP
+      ansible.builtin.shell: "ip addr show | grep -B2 '192.168.56' | grep -E '^[0-9]+:' | awk -F': ' '{print $2}' | head -1"
+      register: dhcp_interface
+      changed_when: false
+      failed_when: false
+
+    - name: Set default interface if none found with 192.168.56.x
+      ansible.builtin.set_fact:
+        selected_interface: "{{ dhcp_interface.stdout if dhcp_interface.stdout != '' else 'enp0s8' }}"
+
+    - name: Show selected interface
+      ansible.builtin.debug:
+        msg: "Interface selecionada para DHCP: {{ selected_interface }}"
+
+    - name: Configure DHCP server interfaces
+      ansible.builtin.lineinfile:
+        path: /etc/default/isc-dhcp-server
+        regexp: '^INTERFACESv4='
+        line: 'INTERFACESv4="{{ selected_interface }}"'
+        state: present
+        create: yes
+      notify: Restart isc-dhcp-server
+
+    - name: Ensure DHCP config directory exists
+      ansible.builtin.file:
+        path: /etc/dhcp
+        state: directory
+        mode: '0755'
+
+    - name: Configure DHCP server
+      ansible.builtin.copy:
+        content: |
+          # DHCP Server Configuration
+          default-lease-time 600;
+          max-lease-time 7200;
+          authoritative;
+          
+          # Configuração da subrede
+          subnet 192.168.56.0 netmask 255.255.255.0 {
+            range 192.168.56.142 192.168.56.150;
+            option routers 192.168.56.139;
+            option domain-name-servers 8.8.8.8, 8.8.4.4;
+            option domain-name "wiliam.devops";
+            option broadcast-address 192.168.56.255;
+            
+            # Reservas para servidores específicos
+            host db-server {
+              hardware ethernet 08:00:27:00:00:01;
+              fixed-address {{ db_ip_fixo }};
+            }
+            
+            host app-server {
+              hardware ethernet 08:00:27:00:00:02;  
+              fixed-address {{ app_ip_fixo }};
+            }
+          }
+        dest: /etc/dhcp/dhcpd.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart isc-dhcp-server
+
+    # Verificar configuração DHCP antes de tentar iniciar
+    - name: Test DHCP configuration
+      ansible.builtin.command: dhcpd -t -cf /etc/dhcp/dhcpd.conf
+      register: dhcp_config_test
+      changed_when: false
+      failed_when: false
+
+    - name: Show DHCP config test results
+      ansible.builtin.debug:
+        var: dhcp_config_test
+
+    - name: Fail if DHCP config is invalid
+      ansible.builtin.fail:
+        msg: "Configuração DHCP inválida: {{ dhcp_config_test.stderr }}"
+      when: dhcp_config_test.rc != 0
+
+    - name: Install LVM2
+      ansible.builtin.apt:
+        name: lvm2
+        state: present
+
+    - name: Check if disks exist
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: disk_check
+      loop:
+        - /dev/sdb
+        - /dev/sdc
+        - /dev/sdd
+      failed_when: false
+
+    - name: Show disk status
+      ansible.builtin.debug:
+        msg: "Disco {{ item.item }}: {{ 'existe' if item.stat.exists else 'não existe' }}"
+      loop: "{{ disk_check.results }}"
+
+    - name: Create Physical Volumes only if disks exist
+      community.general.lvg:
+        vg: dados
+        pvs: "{{ disk_check.results | selectattr('stat.exists') | map(attribute='item') | list | join(',') }}"
+        state: present
+      when: disk_check.results | selectattr('stat.exists') | list | length > 0
+
+    - name: Create Logical Volume 'ifpb'
+      community.general.lvol:
+        vg: dados
+        lv: ifpb
+        size: 15G
+        state: present
+      when: disk_check.results | selectattr('stat.exists') | list | length > 0
+
+    - name: Format LV 'ifpb' with ext4
+      community.general.filesystem:
+        fstype: ext4
+        dev: /dev/mapper/dados-ifpb
+        force: no
+      when: disk_check.results | selectattr('stat.exists') | list | length > 0
+
+    - name: Create mount point for /dados
+      ansible.builtin.file:
+        path: /dados
+        state: directory
+        mode: '0755'
+
+    - name: Mount LV 'ifpb' at /dados
+      ansible.builtin.mount:
+        path: /dados
+        src: /dev/mapper/dados-ifpb
+        fstype: ext4
+        opts: defaults
+        state: mounted
+      when: disk_check.results | selectattr('stat.exists') | list | length > 0
+
+    - name: Install NFS server
+      ansible.builtin.apt:
+        name: nfs-kernel-server
+        state: present
+
+    - name: Create NFS shared directory
+      ansible.builtin.file:
+        path: /dados/nfs
+        state: directory
+        mode: '0777'
+
+    - name: Create user nfs-ifpb
+      ansible.builtin.user:
+        name: nfs-ifpb
+        state: present
+        shell: /usr/sbin/nologin
+        create_home: no
+        system: yes
+        uid: 1100
+        group: users
+
+    - name: Get UID/GID of nfs-ifpb user
+      ansible.builtin.command: id -u nfs-ifpb
+      register: nfs_uid
+      changed_when: false
+
+    - name: Get GID of nfs-ifpb user
+      ansible.builtin.command: id -g nfs-ifpb
+      register: nfs_gid
+      changed_when: false
+
+    - name: Show NFS user info
+      ansible.builtin.debug:
+        msg: "UID: {{ nfs_uid.stdout }}, GID: {{ nfs_gid.stdout }}"
+
+    - name: Configure NFS exports
+      ansible.builtin.lineinfile:
+        path: /etc/exports
+        line: "/dados/nfs 192.168.56.0/24(rw,sync,no_subtree_check,no_root_squash,anonuid={{ nfs_uid.stdout }},anongid={{ nfs_gid.stdout }})"
+        state: present
+        create: yes
+      notify: Export NFS shares
+
+    - name: Start and enable NFS server
+      ansible.builtin.service:
+        name: nfs-kernel-server
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Restart isc-dhcp-server
+      ansible.builtin.service:
+        name: isc-dhcp-server
+        state: restarted
+        enabled: yes
+      register: dhcp_restart_result
+      failed_when: false
+
+    - name: Show DHCP restart result if failed
+      ansible.builtin.debug:
+        msg: |
+          DHCP restart falhou: {{ dhcp_restart_result.msg | default('') }}
+          Execute manualmente:
+          sudo systemctl status isc-dhcp-server
+          sudo journalctl -xeu isc-dhcp-server
+      when: dhcp_restart_result is defined and dhcp_restart_result.failed
+
+    - name: Export NFS shares
+      ansible.builtin.command: exportfs -ra

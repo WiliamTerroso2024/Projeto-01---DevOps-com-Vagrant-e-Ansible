@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Projeto DevOps com Vagrant e Ansible</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f4; color: #333; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #0056b3; }
+        h2 { color: #0056b3; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-top: 20px; }
+        ul { list-style-type: none; padding: 0; }
+        ul li { margin-bottom: 10px; }
+        .footer { margin-top: 30px; font-size: 0.9em; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Projeto 01 - DevOps com Vagrant e Ansible</h1>
+        <p>Este projeto tem como objetivo principal desenvolver competências práticas em DevOps e Infraestrutura como Código (IaC) utilizando as ferramentas Vagrant e Ansible. A infraestrutura virtual é provisionada e a configuração do sistema operacional e de serviços essenciais é automatizada, abrangendo temas como Vagrant, Ansible e configuração de serviços Linux (SUDO, SSH, NFS, LVM, DHCP).</p>
+
+        <h2>Detalhes do Projeto</h2>
+        <ul>
+            <li>**Provisionamento da Infraestrutura com Vagrant:** Utiliza Vagrant para criar quatro máquinas virtuais (servidor de arquivos, servidor de banco de dados, servidor de aplicação e host cliente) com configurações específicas de rede, memória e discos adicionais.</li>
+            <li>**Configuração Automatizada com Ansible:** Emprega Ansible playbooks para automatizar a configuração do sistema operacional e serviços em todas as VMs. Isso inclui atualização do sistema, configuração de NTP, ajustes de fuso horário, criação de usuários e grupos, configuração de SSH (autenticação por chaves, bloqueio de root, banner), instalação de cliente NFS.</li>
+            <li>**Servidor de Arquivos (arq):** Configuração de servidor DHCP autoritativo, LVM com Volume Group 'dados' e Logical Volume 'ifpb' (15GB), formatação ext4 e montagem automática em `/dados`. Também inclui a instalação e configuração de servidor NFS para compartilhar `/dados/nfs` com regras específicas de acesso e segurança.</li>
+            <li>**Servidor de Banco de Dados (db):** Instalação do MariaDB e configuração de `autofs` para montar o compartilhamento NFS.</li>
+            <li>**Servidor de Aplicação (app):** Instalação e configuração do Apache2 com uma página `index.html` personalizada e `autofs` para montar o compartilhamento NFS.</li>
+            <li>**Host Cliente (cli):** Instalação de `firefox-esr` e `xauth`, ajuste do SSH para exportação X11 e configuração de `autofs` para o compartilhamento NFS.</li>
+        </ul>
+
+        <div class="footer">
+            <p><strong>Nome:</strong> {{ nome_completo_aluno }}</p>
+            <p><strong>Matrícula:</strong> {{ matricula_aluno }}</p>
+        </div>
+    </div>
+</body>
+</html>

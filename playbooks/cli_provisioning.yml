@@ -1,0 +1,59 @@
+---
+- name: Client cli Provisioning
+  hosts: cli
+  become: true
+
+  tasks:
+    - name: Install firefox-esr and xauth
+      ansible.builtin.apt:
+        name:
+          - firefox-esr
+          - xauth
+        state: present
+
+    - name: Adjust SSH server to allow X11 forwarding
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^X11Forwarding'
+        line: 'X11Forwarding yes'
+        state: present
+      notify: Restart sshd
+
+    - name: Install autofs
+      ansible.builtin.apt:
+        name: autofs
+        state: present
+
+    - name: Configure autofs for NFS mount
+      ansible.builtin.lineinfile:
+        path: /etc/auto.master
+        line: "/var/nfs /etc/auto.nfs --timeout=60"
+        state: present
+        regexp: '^/var/nfs'
+      notify: Restart autofs
+
+    - name: Create auto.nfs file for NFS mount
+      ansible.builtin.copy:
+        content: "nfs -fstype=nfs,rw arq.wiliam.devops:/dados/nfs" # arq.wiliam.devops é o hostname do servidor arq
+        dest: /etc/auto.nfs
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart autofs
+
+    - name: Create /var/nfs directory
+      ansible.builtin.file:
+        path: /var/nfs
+        state: directory
+        mode: '0755'
+
+  handlers:
+    - name: Restart sshd
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+
+    - name: Restart autofs
+      ansible.builtin.service:
+        name: autofs
+        state: restarted

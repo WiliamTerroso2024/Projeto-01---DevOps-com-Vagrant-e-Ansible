@@ -1,0 +1,20 @@
+all:
+  children:
+    servers:
+      hosts:
+        arq:
+          ansible_host: 192.168.56.139
+          ansible_user: vagrant
+          ansible_ssh_private_key_file: .vagrant/machines/arq/virtualbox/private_key
+        db:
+          ansible_host: 192.168.56.140
+          ansible_user: vagrant
+          ansible_ssh_private_key_file: .vagrant/machines/db/virtualbox/private_key
+        app:
+          ansible_host: 192.168.56.141
+          ansible_user: vagrant
+          ansible_ssh_private_key_file: .vagrant/machines/app/virtualbox/private_key
+        cli:
+          ansible_host: 192.168.56.142
+          ansible_user: vagrant
+          ansible_ssh_private_key_file: .vagrant/machines/cli/virtualbox/private_key
